@@ -3,7 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.getCorsOptions = exports.corsOrigin = exports.CORS_ERROR_MESSAGE = void 0;
 const defaultAllowedOrigins = [
     "http://localhost:4200",
-    "https://sencha-sen-reveal.vercel.app"
+    "https://sen-reveal-app.vercel.app"
 ];
 exports.CORS_ERROR_MESSAGE = "Not allowed by CORS";
 /** `CORS_ORIGINS` env (comma-separated) overrides the default list. */

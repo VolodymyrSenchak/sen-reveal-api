@@ -1,6 +1,6 @@
 const defaultAllowedOrigins = [
   "http://localhost:4200",
-  "https://sencha-sen-reveal.vercel.app"
+  "https://sen-reveal-app.vercel.app"
 ];
 
 export const CORS_ERROR_MESSAGE = "Not allowed by CORS";
