@@ -1,6 +1,7 @@
 import { Application } from "express";
 import request, { Response } from "supertest";
 import { GameRegistry } from "../games/gameRegistry";
+import { numberGuessModule } from "../games/number-guess/numberGuess.module";
 import { senRevealModule } from "../games/sen-reveal/senReveal.module";
 import { SessionView } from "../models";
 import { InMemoryBus, InMemoryBusHub } from "../realtime/sessionBus";
@@ -19,7 +20,7 @@ export interface TestPlayer {
 }
 
 export function createTestRegistry(): GameRegistry {
-  return new GameRegistry([senRevealModule, testGameModule]);
+  return new GameRegistry([senRevealModule, numberGuessModule, testGameModule]);
 }
 
 export function expectStatus(res: Response, status: number, label: string): void {

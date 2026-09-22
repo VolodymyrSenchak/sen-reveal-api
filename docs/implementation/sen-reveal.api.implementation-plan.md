@@ -728,10 +728,10 @@ Deviations and additions made during implementation:
 
 ## 11. Future work
 
-**Number guessing** (`number-guess`)
-- Reuses `turnRotation`, the round phases and the same projection shape.
-- Differences: `submitAnswer` payload schema is `{ value: number }`. The active player submits `setCorrectAnswer { value }` instead of picking a winner. The module computes the closest (winner) and farthest (loser) automatically and records a result. No `pickResult`.
-- → Fits: only its module's `actions` and `project` differ.
+**Number guessing** (`number-guess`) — **built**, in `games/number-guess/`
+- Reuses `turnRotation`, the round phases and the same projection shape, exactly as predicted: only its `actions` and `project` differ.
+- Differences as built: the guess action is `submitGuess { value: number }`. The active player submits `setCorrectAnswer { value }` in the `revealed` phase instead of picking a winner, and that is what resolves the round. The module computes the closest (`winnerIds`) and furthest (`loserIds`) itself; both are arrays, so ties are shared, and `loserIds` is empty when every guess is the same distance out. No `pickResult`.
+- Guesses and the answer are finite numbers in ±1e9; distances are rounded to 6 places before they are compared, so float noise never decides a tie.
 
 **Who am I** (`who-am-i`)
 - On `start`, the module builds a random derangement (nobody gets themselves): `assignments[giverId] = targetId`.

@@ -1,4 +1,5 @@
 import { AnyGameModule } from "./gameModule";
+import { numberGuessModule } from "./number-guess/numberGuess.module";
 import { senRevealModule } from "./sen-reveal/senReveal.module";
 
 export class GameRegistry {
@@ -26,5 +27,5 @@ export class GameRegistry {
 }
 
 export function createDefaultGameRegistry(): GameRegistry {
-  return new GameRegistry([senRevealModule]);
+  return new GameRegistry([senRevealModule, numberGuessModule]);
 }

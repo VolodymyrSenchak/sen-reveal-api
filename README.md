@@ -1,6 +1,6 @@
 # sen-reveal-api
 
-Backend for the SenReveal party game (and the future number-guess / who-am-i games):
+Backend for the SenReveal and number-guess party games (and the future who-am-i):
 anonymous players, 6-digit session codes, a lobby, and real-time game state over Socket.IO
 with an HTTP polling fallback. Design: [docs/implementation/sen-reveal.api.implementation-plan.md](docs/implementation/sen-reveal.api.implementation-plan.md).
 
