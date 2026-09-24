@@ -733,12 +733,11 @@ Deviations and additions made during implementation:
 - Differences as built: the guess action is `submitGuess { value: number }`. The active player submits `setCorrectAnswer { value }` in the `revealed` phase instead of picking a winner, and that is what resolves the round. The module computes the closest (`winnerIds`) and furthest (`loserIds`) itself; both are arrays, so ties are shared, and `loserIds` is empty when every guess is the same distance out. No `pickResult`.
 - Guesses and the answer are finite numbers in ±1e9; distances are rounded to 6 places before they are compared, so float noise never decides a tie.
 
-**Who am I** (`who-am-i`)
-- On `start`, the module builds a random derangement (nobody gets themselves): `assignments[giverId] = targetId`.
-- Phase `naming`: each giver submits `assignName { name }` for their target. The projection shows the giver only their own target.
-- Phase `playing`: `project(state, viewer)` returns everyone's name **except the viewer's own**. That's exactly the per-viewer projection hook. Actions such as `guess { name }` and `markGuessed`.
-- Players who join mid-game need special handling in `onPlayerJoined` (for example, queued until the next game).
-- → Fits: needs per-viewer projection (already central) and no turn rotation.
+**Who am I** (`who-am-i`) — **built**, in `games/who-am-i/`
+- On `start` (and on the host's `nextRound`), the module seats everybody in a random single cycle: `assignments[giverId] = targetId`. A single cycle is a derangement, and it survives a leaver: giver → leaver → target becomes giver → target.
+- No turns and no scoring. One phase, `playing`: each giver sends `submitName { name }` once (final). Until they have, the projection gives them only their own target (`cards: null`). After that, they see every card except their own.
+- Host-only `reveal` flips every card, including each viewer's own, and records the round in the history. Missing names stay blank. Then the host's `nextRound` deals a fresh round.
+- Mid-round joiners watch (they see every card) and are dealt in next round. In a revealed round, a leaver's card is left as it was.
 
 **If real-time needs grow**
 - Relay problems (dropped messages showing up in safety-net logs) → swap `SupabaseRealtimeBus` for an Upstash Redis pub/sub implementation of `SessionBus`.

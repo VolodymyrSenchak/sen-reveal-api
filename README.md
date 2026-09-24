@@ -1,6 +1,6 @@
 # sen-reveal-api
 
-Backend for the SenReveal and number-guess party games (and the future who-am-i):
+Backend for the SenReveal, number-guess and who-am-i party games:
 anonymous players, 6-digit session codes, a lobby, and real-time game state over Socket.IO
 with an HTTP polling fallback. Design: [docs/implementation/sen-reveal.api.implementation-plan.md](docs/implementation/sen-reveal.api.implementation-plan.md).
 
@@ -42,7 +42,7 @@ src/
   app.ts, index.ts, runtime.ts   Express app, entry (exports the http.Server), composition root
   models/                        Result, session types, request schemas
   services/                      session pipeline, lobby actions, repository (Supabase + in-memory), projection
-  games/                         GameModule interface, registry, shared turn rotation, sen-reveal module
+  games/                         GameModule interface, registry, shared turn rotation, one folder per game
   realtime/                      Socket.IO server, relay bus, broadcaster, presence, maintenance tick
   middlewares/, routes/, utils/
 ```

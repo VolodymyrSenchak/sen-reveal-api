@@ -1,6 +1,7 @@
 import { AnyGameModule } from "./gameModule";
 import { numberGuessModule } from "./number-guess/numberGuess.module";
 import { senRevealModule } from "./sen-reveal/senReveal.module";
+import { whoAmIModule } from "./who-am-i/whoAmI.module";
 
 export class GameRegistry {
   private readonly modules = new Map<string, AnyGameModule>();
@@ -27,5 +28,5 @@ export class GameRegistry {
 }
 
 export function createDefaultGameRegistry(): GameRegistry {
-  return new GameRegistry([senRevealModule, numberGuessModule]);
+  return new GameRegistry([senRevealModule, numberGuessModule, whoAmIModule]);
 }

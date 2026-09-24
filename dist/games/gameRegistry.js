@@ -4,6 +4,7 @@ exports.GameRegistry = void 0;
 exports.createDefaultGameRegistry = createDefaultGameRegistry;
 const numberGuess_module_1 = require("./number-guess/numberGuess.module");
 const senReveal_module_1 = require("./sen-reveal/senReveal.module");
+const whoAmI_module_1 = require("./who-am-i/whoAmI.module");
 class GameRegistry {
     modules = new Map();
     constructor(modules = []) {
@@ -25,6 +26,6 @@ class GameRegistry {
 }
 exports.GameRegistry = GameRegistry;
 function createDefaultGameRegistry() {
-    return new GameRegistry([senReveal_module_1.senRevealModule, numberGuess_module_1.numberGuessModule]);
+    return new GameRegistry([senReveal_module_1.senRevealModule, numberGuess_module_1.numberGuessModule, whoAmI_module_1.whoAmIModule]);
 }
 //# sourceMappingURL=gameRegistry.js.map
