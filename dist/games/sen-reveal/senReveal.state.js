@@ -10,6 +10,8 @@ exports.MAX_ANSWER_LENGTH_LIMIT = 500;
 exports.senRevealSettingsSchema = zod_1.z.object({
     minPlayers: zod_1.z.number().int().min(3).max(20).default(3),
     maxAnswerLength: zod_1.z.number().int().min(1).max(exports.MAX_ANSWER_LENGTH_LIMIT).default(200),
+    /** The active player picks without seeing who wrote what, and shows the names afterwards. */
+    blindPicks: zod_1.z.boolean().default(false),
 });
-exports.defaultSenRevealSettings = { minPlayers: 3, maxAnswerLength: 200 };
+exports.defaultSenRevealSettings = { minPlayers: 3, maxAnswerLength: 200, blindPicks: false };
 //# sourceMappingURL=senReveal.state.js.map

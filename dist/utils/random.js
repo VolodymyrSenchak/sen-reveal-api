@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.forbiddenRng = exports.cryptoRng = void 0;
+exports.shuffle = shuffle;
 exports.createSeededRng = createSeededRng;
 const node_crypto_1 = require("node:crypto");
 function pickWith(int, items) {
@@ -8,6 +9,15 @@ function pickWith(int, items) {
         throw new Error("Cannot pick from an empty list");
     }
     return items[int(items.length)];
+}
+/** Fisher-Yates. Returns a new array. */
+function shuffle(items, rng) {
+    const shuffled = [...items];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = rng.int(i + 1);
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
 }
 exports.cryptoRng = {
     int: (maxExclusive) => (0, node_crypto_1.randomInt)(0, maxExclusive),
