@@ -14,6 +14,16 @@ function pickWith<T>(int: (max: number) => number, items: readonly T[]): T {
   return items[int(items.length)];
 }
 
+/** Fisher-Yates. Returns a new array. */
+export function shuffle<T>(items: readonly T[], rng: Rng): T[] {
+  const shuffled = [...items];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = rng.int(i + 1);
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
 export const cryptoRng: Rng = {
   int: (maxExclusive) => randomInt(0, maxExclusive),
   pick: (items) => pickWith((max) => randomInt(0, max), items),

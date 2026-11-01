@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { failure, Result, success } from "../../models/result";
+import { shuffle } from "../../utils/random";
 import { defineGameAction, GameAction, GameContext, GameTransition } from "../gameModule";
 import { addPlayerToCircle, createTurnCircle, pickNextActive, removePlayerFromCircle } from "../shared/turnRotation";
 import {
@@ -25,6 +26,11 @@ const paused = (): TransitionResult => failure("The game is paused until more pl
 
 export function getAnsweredPlayerIds(round: SenRevealRound): string[] {
   return round.eligiblePlayerIds.filter((id) => Object.hasOwn(round.answers, id));
+}
+
+/** The loser may only be missing when there was a single answer to pick from. */
+function hasCompletePicks(round: SenRevealRound): boolean {
+  return round.winnerId !== null && (round.loserId !== null || getAnsweredPlayerIds(round).length === 1);
 }
 
 function addToScore(
@@ -74,6 +80,8 @@ export function startNextRound(state: SenRevealState, ctx: Ctx): SenRevealState 
       revealedAt: null,
       winnerId: null,
       loserId: null,
+      picksSeq: 0,
+      namesShown: false,
       resolvedAt: null,
     },
   };
@@ -146,7 +154,62 @@ export const senRevealActions: Record<string, GameAction<SenRevealState, SenReve
     if (!force && answered.length < round.eligiblePlayerIds.length) {
       return failure("Not everybody has answered yet", "conflict");
     }
-    return transition({ ...state, round: { ...round, phase: "revealed", revealedAt: ctx.now.toISOString() } });
+    // answers are listed in this order, and join order would give the authors away
+    const eligiblePlayerIds = ctx.settings.blindPicks ? shuffle(round.eligiblePlayerIds, ctx.rng) : round.eligiblePlayerIds;
+    return transition({ ...state, round: { ...round, eligiblePlayerIds, phase: "revealed", revealedAt: ctx.now.toISOString() } });
+  }),
+
+  /** The picks in progress: everyone sees them land on the cards, nothing is scored until `pickResult`. */
+  setPicks: action(
+    z.object({
+      winnerId: z.string().min(1).nullable(),
+      loserId: z.string().min(1).nullable(),
+      seq: z.number().int().positive(),
+    }),
+    (ctx, state, { winnerId, loserId, seq }) => {
+      const round = state.round;
+      if (!round) return paused();
+      if (round.activePlayerId !== ctx.actorId) {
+        return failure("Only the active player can pick the winner and the loser", "forbidden");
+      }
+      if (seq <= round.picksSeq) {
+        // two quick taps can overtake each other (a losing write re-runs); the newer one stands
+        return transition(state);
+      }
+      if (round.phase !== "revealed") {
+        return failure("Picks can only be changed while the answers are on the table", "conflict");
+      }
+      if (round.namesShown) {
+        return failure("The picks are locked once the names are shown", "conflict");
+      }
+      const answered = getAnsweredPlayerIds(round);
+      if ((winnerId !== null && !answered.includes(winnerId)) || (loserId !== null && !answered.includes(loserId))) {
+        return failure("Picks must be players who answered", "bad-request");
+      }
+      if (winnerId !== null && winnerId === loserId) {
+        return failure("The winner and the loser must be different players", "bad-request");
+      }
+      return transition({ ...state, round: { ...round, winnerId, loserId, picksSeq: seq } });
+    }
+  ),
+
+  /** Blind picks only: puts the names on the cards for everyone and locks the picks. */
+  showNames: action(z.object({}), (ctx, state) => {
+    const round = state.round;
+    if (!round) return paused();
+    if (round.activePlayerId !== ctx.actorId) {
+      return failure("Only the active player can show the names", "forbidden");
+    }
+    if (!ctx.settings.blindPicks) {
+      return failure("Names are not hidden in this game", "conflict");
+    }
+    if (round.phase !== "revealed" || round.namesShown) {
+      return failure("The names are not hidden right now", "conflict");
+    }
+    if (!hasCompletePicks(round)) {
+      return failure("Pick the winner and the loser first", "conflict");
+    }
+    return transition({ ...state, round: { ...round, namesShown: true } });
   }),
 
   pickResult: action(
@@ -163,10 +226,16 @@ export const senRevealActions: Record<string, GameAction<SenRevealState, SenReve
       if (round.phase === "resolved") {
         return failure("The result has already been picked", "conflict");
       }
+      if (ctx.settings.blindPicks && !round.namesShown) {
+        return failure("Show the names first", "conflict");
+      }
 
       const answered = getAnsweredPlayerIds(round);
       const winnerId = payload.winnerId;
       const loserId = payload.loserId ?? null;
+      if (round.namesShown && (winnerId !== round.winnerId || loserId !== round.loserId)) {
+        return failure("The picks are locked once the names are shown", "conflict");
+      }
       if (!answered.includes(winnerId)) {
         return failure("The winner must be a player who answered", "bad-request");
       }
@@ -260,10 +329,15 @@ export function onPlayerRemoved(ctx: Ctx, state: SenRevealState, playerId: strin
   }
 
   const { [playerId]: _dropped, ...answers } = round.answers;
+  const lostPick = round.winnerId === playerId || round.loserId === playerId;
   const updatedRound: SenRevealRound = {
     ...round,
     eligiblePlayerIds: round.eligiblePlayerIds.filter((id) => id !== playerId),
     answers,
+    winnerId: round.winnerId === playerId ? null : round.winnerId,
+    loserId: round.loserId === playerId ? null : round.loserId,
+    // the replacement pick has to be blind as well
+    namesShown: round.namesShown && !lostPick,
   };
   if (updatedRound.phase === "revealed" && getAnsweredPlayerIds(updatedRound).length === 0) {
     // nothing left to pick from

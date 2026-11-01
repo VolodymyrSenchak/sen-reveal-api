@@ -6,7 +6,7 @@ import { senRevealModule } from "./senReveal.module";
 import { SenRevealView } from "./senReveal.projection";
 import { HISTORY_LIMIT, SenRevealState } from "./senReveal.state";
 
-const SETTINGS = { minPlayers: 3, maxAnswerLength: 200, maxPlayers: 20, allowJoinInProgress: true };
+const SETTINGS = { minPlayers: 3, maxAnswerLength: 200, blindPicks: false, maxPlayers: 20, allowJoinInProgress: true };
 
 function makePlayer(id: string, index: number): PlayerRecord {
   return {
@@ -25,8 +25,9 @@ class Game {
   hostId = "p1";
   private readonly rng: Rng;
   private tick = 0;
+  private picksSeq = 0;
 
-  constructor(count: number, seed = 1) {
+  constructor(count: number, seed = 1, private readonly settings = SETTINGS) {
     this.rng = createSeededRng(seed);
     this.players = Array.from({ length: count }, (_, i) => makePlayer(`p${i + 1}`, i));
     const initial = senRevealModule.createInitialState(this.ctx(this.hostId));
@@ -39,7 +40,7 @@ class Game {
       actorId,
       hostPlayerId: this.hostId,
       activePlayers: this.players,
-      settings: SETTINGS,
+      settings: this.settings,
       status: "in_progress",
       now: new Date(Date.UTC(2026, 0, 1, 13) + this.tick++ * 1000),
       rng: this.rng,
@@ -48,7 +49,7 @@ class Game {
 
   run(actorId: string, name: string, payload: unknown = {}): Result<GameTransition<SenRevealState>> {
     const action = senRevealModule.actions[name];
-    const parsed = action.schema.safeParse(payload);
+    const parsed = action.schema.safeParse(name === "setPicks" ? { seq: ++this.picksSeq, ...(payload as object) } : payload);
     if (!parsed.success) {
       return { isSuccess: false, errorStatus: "bad-request", error: parsed.error.message };
     }
@@ -357,5 +358,209 @@ describe("SenReveal module", () => {
 
     const finished = senRevealModule.project(game.state, game.activeId, { ...game.ctx(game.activeId), status: "finished" });
     expect(finished.round).toMatchObject({ canReveal: false, canSetQuestion: false });
+  });
+
+  describe("live picks", () => {
+    function revealedGame(count = 4) {
+      const game = new Game(count);
+      game.answerAll();
+      game.ok(game.activeId, "reveal");
+      return game;
+    }
+
+    it("shows the picks in progress to everyone without scoring them", () => {
+      const game = revealedGame();
+      const [a, b] = game.answererIds;
+
+      game.ok(game.activeId, "setPicks", { winnerId: a, loserId: null });
+      game.ok(game.activeId, "setPicks", { winnerId: a, loserId: b });
+
+      for (const player of game.players) {
+        expect(game.view(player.id).round).toMatchObject({ phase: "revealed", winnerId: a, loserId: b, namesHidden: false });
+      }
+      expect(game.state.scoreboard[a].wins).toBe(0);
+      expect(game.state.history).toHaveLength(0);
+    });
+
+    it("can be changed and cleared until the result is picked", () => {
+      const game = revealedGame();
+      const [a, b] = game.answererIds;
+
+      game.ok(game.activeId, "setPicks", { winnerId: a, loserId: b });
+      game.ok(game.activeId, "setPicks", { winnerId: b, loserId: null });
+      expect(game.round).toMatchObject({ winnerId: b, loserId: null });
+      game.ok(game.activeId, "setPicks", { winnerId: null, loserId: null });
+      expect(game.round).toMatchObject({ winnerId: null, loserId: null });
+    });
+
+    it("ignores an older tap that lands after a newer one", () => {
+      const game = revealedGame();
+      const [a, b] = game.answererIds;
+
+      game.ok(game.activeId, "setPicks", { winnerId: a, loserId: b, seq: 2 });
+      game.ok(game.activeId, "setPicks", { winnerId: a, loserId: null, seq: 1 });
+      expect(game.round).toMatchObject({ winnerId: a, loserId: b, picksSeq: 2 });
+      expect(game.view(game.activeId).round!.picksSeq).toBe(2);
+
+      game.ok(game.activeId, "setPicks", { winnerId: b, loserId: a, seq: 3 });
+      expect(game.round).toMatchObject({ winnerId: b, loserId: a, picksSeq: 3 });
+    });
+
+    it("validates who can pick, when and whom", () => {
+      const game = new Game(4);
+      game.answerAll();
+      const [a, b] = game.answererIds;
+      expect(game.run(game.activeId, "setPicks", { winnerId: a, loserId: b })).toMatchObject({ errorStatus: "conflict" });
+      game.ok(game.activeId, "reveal");
+
+      expect(game.run(a, "setPicks", { winnerId: a, loserId: b })).toMatchObject({ errorStatus: "forbidden" });
+      expect(game.run(game.activeId, "setPicks", { winnerId: a, loserId: a })).toMatchObject({ errorStatus: "bad-request" });
+      expect(game.run(game.activeId, "setPicks", { winnerId: "stranger", loserId: b })).toMatchObject({ errorStatus: "bad-request" });
+      expect(game.run(game.activeId, "setPicks", { winnerId: a, loserId: "stranger" })).toMatchObject({ errorStatus: "bad-request" });
+
+      game.ok(game.activeId, "pickResult", { winnerId: a, loserId: b });
+      expect(game.run(game.activeId, "setPicks", { winnerId: b, loserId: a })).toMatchObject({ errorStatus: "conflict" });
+    });
+
+    it("clears the pick of a player who leaves, and starts the next round clean", () => {
+      const game = revealedGame(5);
+      const [a, b] = game.answererIds;
+      game.ok(game.activeId, "setPicks", { winnerId: a, loserId: b });
+
+      game.remove(a);
+      expect(game.round).toMatchObject({ winnerId: null, loserId: b });
+
+      game.ok(game.hostId, "skipRound");
+      expect(game.round).toMatchObject({ phase: "answering", winnerId: null, loserId: null, picksSeq: 0, namesShown: false });
+    });
+
+    it("never offers the names in a normal game", () => {
+      const game = revealedGame();
+      const [a, b] = game.answererIds;
+      expect(game.view(game.activeId).round).toMatchObject({ canSetPicks: true, canShowNames: false, canPickResult: true });
+
+      game.ok(game.activeId, "setPicks", { winnerId: a, loserId: b });
+      expect(game.run(game.activeId, "showNames")).toMatchObject({ errorStatus: "conflict" });
+      game.ok(game.activeId, "pickResult", { winnerId: a, loserId: b });
+    });
+  });
+
+  describe("blind picks", () => {
+    const BLIND = { ...SETTINGS, blindPicks: true };
+
+    function blindGame(count = 4, seed = 1) {
+      const game = new Game(count, seed, BLIND);
+      game.answerAll();
+      return game;
+    }
+
+    /** Revealed, picked and ready for the names. */
+    function pickedGame(count = 4) {
+      const game = blindGame(count);
+      game.ok(game.activeId, "reveal");
+      const [a, b] = game.answererIds;
+      game.ok(game.activeId, "setPicks", { winnerId: a, loserId: b });
+      return { game, a, b };
+    }
+
+    it("defaults to off", () => {
+      expect(senRevealModule.defaultSettings.blindPicks).toBe(false);
+      expect(senRevealModule.settingsSchema.parse({})).toMatchObject({ blindPicks: false });
+    });
+
+    it("shuffles the answers once at the reveal and keeps that order for everyone", () => {
+      const seeds = Array.from({ length: 8 }, (_, i) => i + 1);
+      const orders = seeds.map((seed) => {
+        const game = blindGame(6, seed);
+        const joinOrder = [...game.answererIds];
+        game.ok(game.activeId, "reveal");
+        const ids = game.view(game.activeId).round!.answers!.map((answer) => answer.playerId);
+
+        expect([...ids].sort()).toEqual([...joinOrder].sort());
+        for (const player of game.players) {
+          expect(game.view(player.id).round!.answers!.map((answer) => answer.playerId)).toEqual(ids);
+        }
+        return ids.join() === joinOrder.join();
+      });
+      expect(orders).toContain(false);
+    });
+
+    it("hides the names from everyone until the active player shows them", () => {
+      const { game, a, b } = pickedGame();
+      for (const player of game.players) {
+        expect(game.view(player.id).round).toMatchObject({ namesHidden: true, winnerId: a, loserId: b });
+      }
+
+      game.ok(game.activeId, "showNames");
+      for (const player of game.players) {
+        expect(game.view(player.id).round).toMatchObject({ namesHidden: false, picksLocked: true, canShowNames: false });
+      }
+    });
+
+    it("walks the active player through pick, names, confirm", () => {
+      const { game, a, b } = pickedGame();
+      expect(game.view(game.activeId).round).toMatchObject({ canSetPicks: true, canShowNames: true, canPickResult: false });
+      expect(game.view(a).round).toMatchObject({ canSetPicks: false, canShowNames: false, canPickResult: false });
+      expect(game.run(game.activeId, "pickResult", { winnerId: a, loserId: b })).toMatchObject({ errorStatus: "conflict" });
+
+      game.ok(game.activeId, "showNames");
+      expect(game.view(game.activeId).round).toMatchObject({ canSetPicks: false, canShowNames: false, canPickResult: true });
+
+      game.ok(game.activeId, "pickResult", { winnerId: a, loserId: b });
+      expect(game.round.phase).toBe("resolved");
+      expect(game.state.scoreboard[a].wins).toBe(1);
+    });
+
+    it("only lets the active player show the names, once, after both picks", () => {
+      const game = blindGame();
+      const [a, b] = game.answererIds;
+      expect(game.run(game.activeId, "showNames")).toMatchObject({ errorStatus: "conflict" });
+      game.ok(game.activeId, "reveal");
+
+      expect(game.run(game.activeId, "showNames")).toMatchObject({ errorStatus: "conflict" });
+      game.ok(game.activeId, "setPicks", { winnerId: a, loserId: null });
+      expect(game.run(game.activeId, "showNames")).toMatchObject({ errorStatus: "conflict" });
+      game.ok(game.activeId, "setPicks", { winnerId: a, loserId: b });
+      expect(game.run(a, "showNames")).toMatchObject({ errorStatus: "forbidden" });
+
+      game.ok(game.activeId, "showNames");
+      expect(game.run(game.activeId, "showNames")).toMatchObject({ errorStatus: "conflict" });
+    });
+
+    it("accepts a lone pick when only one player answered", () => {
+      const game = new Game(4, 1, BLIND);
+      const [only] = game.answererIds;
+      game.ok(only, "submitAnswer", { value: "lonely" });
+      game.ok(game.activeId, "reveal", { force: true });
+
+      game.ok(game.activeId, "setPicks", { winnerId: only, loserId: null });
+      game.ok(game.activeId, "showNames");
+      game.ok(game.activeId, "pickResult", { winnerId: only, loserId: null });
+    });
+
+    it("locks the picks once the names are out", () => {
+      const { game, a, b } = pickedGame();
+      game.ok(game.activeId, "showNames");
+
+      expect(game.run(game.activeId, "setPicks", { winnerId: b, loserId: a })).toMatchObject({ errorStatus: "conflict" });
+      expect(game.run(game.activeId, "pickResult", { winnerId: b, loserId: a })).toMatchObject({ errorStatus: "conflict" });
+    });
+
+    it("hides the names again when a picked player leaves, so the new pick is blind too", () => {
+      const { game, a, b } = pickedGame(5);
+      game.ok(game.activeId, "showNames");
+
+      game.remove(a);
+      expect(game.round).toMatchObject({ namesShown: false, winnerId: null, loserId: b });
+      expect(game.view(game.activeId).round).toMatchObject({ namesHidden: true, canSetPicks: true });
+    });
+
+    it("keeps the names showing when somebody else leaves", () => {
+      const { game, a, b } = pickedGame(5);
+      game.ok(game.activeId, "showNames");
+
+      game.remove(game.answererIds[2]);
+      expect(game.round).toMatchObject({ namesShown: true, winnerId: a, loserId: b });
+    });
   });
 });

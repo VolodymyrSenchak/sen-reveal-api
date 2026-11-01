@@ -19,7 +19,7 @@ describe("sessions over HTTP", () => {
     expect(playerToken).toEqual(expect.any(String));
     expect(session).toMatchObject({ status: "pending", version: 1, hostPlayerId: playerId, game: null, poll: { intervalMs: 3000 } });
     expect(session.me).toEqual({ playerId, nickname: "Alice", isHost: true });
-    expect(session.settings).toEqual({ minPlayers: 3, maxAnswerLength: 200, maxPlayers: 20, allowJoinInProgress: true });
+    expect(session.settings).toEqual({ minPlayers: 3, maxAnswerLength: 200, blindPicks: false, maxPlayers: 20, allowJoinInProgress: true });
     const json = JSON.stringify(res.body.session);
     expect(json).not.toContain("tokenHash");
     expect(json).not.toContain("scrypt");

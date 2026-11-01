@@ -10,11 +10,13 @@ export const MAX_ANSWER_LENGTH_LIMIT = 500;
 export const senRevealSettingsSchema = z.object({
   minPlayers: z.number().int().min(3).max(20).default(3),
   maxAnswerLength: z.number().int().min(1).max(MAX_ANSWER_LENGTH_LIMIT).default(200),
+  /** The active player picks without seeing who wrote what, and shows the names afterwards. */
+  blindPicks: z.boolean().default(false),
 });
 
 export type SenRevealSettings = z.output<typeof senRevealSettingsSchema>;
 
-export const defaultSenRevealSettings: SenRevealSettings = { minPlayers: 3, maxAnswerLength: 200 };
+export const defaultSenRevealSettings: SenRevealSettings = { minPlayers: 3, maxAnswerLength: 200, blindPicks: false };
 
 export type SenRevealPhase = "answering" | "revealed" | "resolved";
 
@@ -48,8 +50,13 @@ export interface SenRevealRound {
   answers: Record<string, { value: string; submittedAt: string }>;
   startedAt: string;
   revealedAt: string | null;
+  /** While `revealed`: the active player's picks so far, visible to everyone. */
   winnerId: string | null;
   loserId: string | null;
+  /** The newest `setPicks` applied. Each one carries the whole pick, so an older one must not land after it. */
+  picksSeq: number;
+  /** Blind picks only: the active player has shown the names, which locks the picks. */
+  namesShown: boolean;
   resolvedAt: string | null;
 }
 
